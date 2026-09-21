@@ -1,0 +1,25 @@
+# Private working context — deliberately NOT published.
+#
+# These are the notebook and the multi-agent coordination workspace: raw ideas,
+# candid session logs, internal handoff notes. Nothing secret, but they are
+# unfiltered working notes and they name the human. They stay on disk and out
+# of git. Contributor-facing rules live in CONTRIBUTING.md instead.
+#
+# Git history is permanent — if any of this is ever committed, gitignoring it
+# afterwards does nothing. Keep it out from the first commit.
+.apsolut/
+.apsolut-agents/
+CLAUDE.md
+CLAUDE.local.md
+HANDOFF.md
+
+# Derived from Anthropic's cli binary — regenerable with tools/prettify.sh.
+# Git history is permanent, so these stay out of it: ~47MB, and none of it is
+# ours to redistribute.
+tools/cli.pretty.js
+tools/system-prompts-*/
+
+# install.ps1 backups. These existed only because the file used to live under
+# gitignored .apsolut/07-files/ and had no version control. Git is the backup
+# now — delete them once the first commit lands.
+install.ps1.*-bak

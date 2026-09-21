@@ -1,0 +1,22 @@
+# Line endings are deterministic here regardless of anyone's core.autocrlf.
+#
+# This repo is Windows-first but its tooling is run through bash/sh, so the two
+# families must not be normalised the same way:
+#
+#   - install.ps1 is CRLF with a UTF-8 BOM and must stay that way. It is the
+#     single source of truth and carries every embedded script as a here-string;
+#     a silent LF conversion turns a three-line change into a whole-file diff.
+#   - The shell scripts must be LF. A .sh checked out with CRLF fails as
+#     `bash: \r: command not found`, which reads as a broken tool, not a broken
+#     checkout.
+#
+* text=auto
+
+install.ps1     text eol=crlf
+
+*.sh            text eol=lf
+*.mjs           text eol=lf
+*.js            text eol=lf
+*.md            text eol=lf
+.gitignore      text eol=lf
+.gitattributes  text eol=lf
