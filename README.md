@@ -9,9 +9,10 @@ border + title, section labels like *Tips for getting started* / *Recent
 activity*, and the shimmer) — and then lets you **change the colors live, from a
 JSON file or a `claude theme` command, without reinstalling.**
 
-![How ClawCoat works: install.ps1 patches the bundle's static brand colours into
-getter functions, which re-read ~/.clawcoat/clawcoat.json on every paint — so editing
-the config retints the running UI without reinstalling.](docs/how-it-works.png)
+![ClawCoat: ask for a change and Claude Code rebuilds its own UI. A prompt reading
+"make my statusline a containment console", and below it the resulting HIVE statusline —
+UMBRELLA HIVE·B7, CONTAIN 87%, T-VIRUS 13%, PWR 99%, SECURE — plus a "Containing…"
+spinner. Real output; every readout is a live session metric.](docs/hero.png)
 
 ## What it touches — and what it deliberately doesn't
 
@@ -352,7 +353,7 @@ carries the wrapper, the patcher, and the statusline as embedded here-strings.
 | `tools/extract-herestring.mjs` | pulls an embedded script out of `install.ps1` so it can be tested as-written |
 | `tools/test-statusline-*.mjs` | regression suites for the statusline + its settings wiring |
 | `CONTRIBUTING.md` | the here-string rule, the checks to run, and the rules that exist because something broke |
-| `docs/how-it-works.png` | the diagram at the top of this README |
+| `docs/hero.png` | the image at the top of this README — real session output, composited |
 
 `tools/cli.pretty.js` and `tools/system-prompts-*/` are **not tracked**: both are
 derived from Anthropic's `cli` binary and regenerable with `tools/prettify.sh`.
