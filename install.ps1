@@ -115,80 +115,10 @@ Write-Host "  ClawCoat installer" -ForegroundColor White -NoNewline
 Write-Host " (Windows)" -ForegroundColor DarkGray
 Write-Host ""
 
-# ─── Legacy migration (apsolut-theme → ClawCoat) ──────
-#
-# Pre-rename builds installed to ~/.apsolut-theme with config apsolut-theme.json
-# and an 'apsolut' launcher alias. Move the whole state dir across, rename the
-# config + version marker, and rewrite the palette name inside the JSON so the
-# user keeps their theme/animation/reactive settings. Runs before -Uninstall so
-# uninstalling a legacy install also works.
-#
-# Pure PowerShell on purpose — this runs before the Node prerequisite check.
-
-$LegacyDir  = Join-Path $env:USERPROFILE ".apsolut-theme"
-$LegacyAlias = Join-Path $BinDir "apsolut.cmd"
-
-if (Test-Path -LiteralPath $LegacyDir) {
-    if (Test-Path -LiteralPath $ClawDir) {
-        Write-Warn "Both ~/.apsolut-theme and ~/.clawcoat exist — leaving the legacy dir alone."
-        Write-Dim  "Using ~/.clawcoat. Delete ~/.apsolut-theme by hand once you're happy."
-    } else {
-        Write-Dim "Found legacy install at ~/.apsolut-theme"
-        try {
-            Move-Item -Force -LiteralPath $LegacyDir -Destination $ClawDir
-            Write-OK "Migrated ~/.apsolut-theme → ~/.clawcoat"
-        } catch {
-            Write-Err "Could not move ~/.apsolut-theme → ~/.clawcoat: $($_.Exception.Message)"
-            Write-Dim "Close any running 'claude' session and re-run this script."
-            exit 1
-        }
-
-        # config: apsolut-theme.json → clawcoat.json (keep the user's settings)
-        $legacyCfg = Join-Path $ClawDir "apsolut-theme.json"
-        $newCfg    = Join-Path $ClawDir "clawcoat.json"
-        if (Test-Path -LiteralPath $legacyCfg) {
-            if (Test-Path -LiteralPath $newCfg) {
-                Remove-Item -Force -LiteralPath $legacyCfg
-            } else {
-                Move-Item -Force -LiteralPath $legacyCfg -Destination $newCfg
-                # the default palette was renamed apsolut → clawcoat; carry the selection over
-                try {
-                    $raw = Get-Content -Raw -Encoding UTF8 $newCfg
-                    $fixed = $raw -replace '("theme"\s*:\s*)"apsolut"', '$1"clawcoat"'
-                    $fixed = $fixed -replace '("apsolut"\s*:\s*\{)', '"clawcoat": {'
-                    if ($fixed -ne $raw) {
-                        Set-Content -Encoding UTF8 -NoNewline $newCfg $fixed
-                        Write-OK "Config migrated → clawcoat.json (palette 'apsolut' → 'clawcoat')"
-                    } else {
-                        Write-OK "Config migrated → clawcoat.json"
-                    }
-                } catch {
-                    Write-Warn "Config moved but could not be rewritten: $($_.Exception.Message)"
-                    Write-Dim  "If your theme looks wrong, run: claude theme clawcoat"
-                }
-            }
-        }
-
-        # version marker: .apsolut-version → .clawcoat-version
-        $legacyVer = Join-Path $ClawDir ".apsolut-version"
-        $newVer    = Join-Path $ClawDir ".clawcoat-version"
-        if (Test-Path -LiteralPath $legacyVer) {
-            if (Test-Path -LiteralPath $newVer) { Remove-Item -Force -LiteralPath $legacyVer }
-            else { Move-Item -Force -LiteralPath $legacyVer -Destination $newVer }
-        }
-    }
-}
-
-# stale 'apsolut' alias — the launcher is 'clawcoat' now
-if (Test-Path -LiteralPath $LegacyAlias) {
-    Remove-Item -Force -LiteralPath $LegacyAlias
-    Write-OK "Removed stale 'apsolut' alias (use 'clawcoat' now)"
-}
-
 # Shared by -Uninstall and -StatuslineOff. Defined once, ahead of the uninstall
-# branch, because this regex is load-bearing — it also recognises the pre-rename
-# .apsolut-theme pointer so a stale one gets cleaned up. Three near-identical
-# copies of it was an invitation for them to drift apart.
+# branch, because this regex is load-bearing: it decides what counts as OUR
+# statusline. Three near-identical copies of it was an invitation for them to
+# drift apart.
 $SlUnhookScript = @'
 const fs = require("fs"), p = process.argv[1];
 let s = {}, raw = null;
@@ -197,7 +127,7 @@ try { raw = fs.readFileSync(p, "utf8"); } catch { process.exit(0); }
 try { s = JSON.parse(raw); } catch { process.exit(0); }
 const cmd = s.statusLine && s.statusLine.command;
 // Only unhook OUR statusline — never touch a hand-rolled one.
-if (typeof cmd === "string" && /[\\/](?:\.clawcoat|\.apsolut-theme)[\\/]statusline\.js/.test(cmd)) {
+if (typeof cmd === "string" && /[\\/]\.clawcoat[\\/]statusline\.js/.test(cmd)) {
   delete s.statusLine;
   fs.writeFileSync(p, JSON.stringify(s, null, 2) + "\n");
   console.log("unhooked");
@@ -269,7 +199,7 @@ if ($Uninstall) {
 
     # Drop the statusLine pointer BEFORE deleting statusline.js, otherwise Claude
     # Code is left invoking a file that no longer exists and paints an empty bar
-    # with no error — the exact silent failure the apsolut-theme rename caused.
+    # with no error — the exact silent failure a past rename caused here.
     $uninstallSettings = Join-Path $env:USERPROFILE ".claude\settings.json"
     if (Test-Path -LiteralPath $uninstallSettings) {
         # Older ClawCoat versions applied "lean mode" to the user's GLOBAL settings on
@@ -2173,10 +2103,9 @@ if (Test-Path -LiteralPath $providerJson) {
 #
 # The statusline is the persistent bottom bar. It is NOT part of the patched
 # bundle — Claude Code runs it as an external command named in settings.json and
-# pipes a session JSON on stdin. That external-ness is why the apsolut-theme →
-# clawcoat rename broke it silently: the rename swept this installer, but the
-# bar's two links (the settings.json path, and the config path inside the script)
-# lived outside it. A statusLine command that cannot be executed paints nothing
+# pipes a session JSON on stdin. That external-ness is why a past rename broke
+# it silently: the rename swept this installer, but the bar's two links (the
+# settings.json path, and the config path inside the script) lived outside it. A statusLine command that cannot be executed paints nothing
 # and reports nothing. Owning both links here is what stops that recurring.
 #
 # Honours a .statusline-disabled flag so `-StatuslineOff` survives re-installs.
@@ -2225,7 +2154,7 @@ try { cfg = JSON.parse(readFileSync(join(os.homedir(), ".clawcoat", "clawcoat.js
 // palette added later work here for free. The table is only a fallback for a
 // config that predates `palettes` (or is missing entirely).
 const PAL = {
-  clawcoat: "100,149,237", apsolut: "100,149,237", yellow: "250,204,21",
+  clawcoat: "100,149,237", yellow: "250,204,21",
   violet: "139,92,246", gruvbox: "215,153,33",
   dracula: "189,147,249", biohazard: "206,42,42", neon: "0,229,177",
 };
@@ -2373,10 +2302,10 @@ if (raw !== null && raw.trim()) {
 }
 const want = `"${nodeExe.replace(/\\/g, "/")}" "${script.replace(/\\/g, "/")}"`;
 const cur = s.statusLine && s.statusLine.command;
-// Claim the slot when it is empty or already ours (including the pre-rename
-// .apsolut-theme path — that stale pointer is exactly what we are repairing).
+// Claim the slot when it is empty or already ours — a stale pointer at our own
+// path (moved install, new node exe) is exactly what we are repairing.
 // A statusLine the user wrote themselves is left strictly alone.
-const ours = typeof cur === "string" && /[\\/](?:\.clawcoat|\.apsolut-theme)[\\/]statusline\.js/.test(cur);
+const ours = typeof cur === "string" && /[\\/]\.clawcoat[\\/]statusline\.js/.test(cur);
 if (!s.statusLine || ours) {
   if (cur === want) { console.log("ok"); process.exit(0); }
   const repaired = ours && cur !== want;

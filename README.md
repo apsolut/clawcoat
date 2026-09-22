@@ -299,38 +299,8 @@ it alone, and prints the command to wire ours up by hand instead.
 > **Why this lives in the installer.** The bar is not part of the patched bundle — it
 > is an external file plus a path in someone else's config. When a `statusLine` command
 > cannot be executed, Claude Code paints an empty bar and reports nothing, so a stale
-> path is invisible. The `apsolut-theme` → ClawCoat rename broke exactly that way. The
+> path is invisible. A past rename of this project broke exactly that way. The
 > installer now owns both links, and repairs a stale pointer on the next run.
-
-## Upgrading from `apsolut-theme`
-
-This project was called **apsolut-theme** before it was named ClawCoat. Everything
-moved: the install dir, the config file, the launcher alias, and the default palette.
-
-| was | is now |
-|-----|--------|
-| `~/.apsolut-theme/` | `~/.clawcoat/` |
-| `apsolut-theme.json` | `clawcoat.json` |
-| `apsolut` alias (`apsolut theme …`) | `clawcoat` (`clawcoat theme …`) |
-| `apsolut` palette (cornflower) | `clawcoat` palette (same `#6495ed`) |
-| `APSOLUT_THEME`, `APSOLUT_VERSION` | `CLAWCOAT_*` (the `*_LEAN_*` vars are gone with lean mode) |
-| `statusLine` in `~/.claude/settings.json` | repointed at `~/.clawcoat/statusline.js` |
-
-**You don't have to do any of it by hand.** Just re-run the installer — it detects
-`~/.apsolut-theme`, moves the whole state dir to `~/.clawcoat`, renames the config,
-rewrites `"theme": "apsolut"` to `"clawcoat"` inside it so your settings survive, and
-deletes the stale `apsolut` alias:
-
-```
-→ found legacy ~/.apsolut-theme
-→ migrating to ~/.clawcoat
-→ config migrated → clawcoat.json (palette 'apsolut' → 'clawcoat')
-→ removed stale 'apsolut' alias (use 'clawcoat' now)
-```
-
-If both `~/.apsolut-theme` and `~/.clawcoat` somehow exist, the installer keeps its
-hands off the legacy dir and uses `~/.clawcoat` — delete the old one yourself once
-you've confirmed everything works.
 
 ## Notes
 

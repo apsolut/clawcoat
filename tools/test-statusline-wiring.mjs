@@ -51,23 +51,18 @@ check('  unrelated keys survive', read().foo === 1);
 // 2. idempotent
 check('re-run -> ok (no rewrite)', wire() === 'ok');
 
-// 3. the actual bug: stale pre-rename path -> repaired
-seed({ statusLine: { type: 'command', command: `"${fwd(NODE)}" "C:/Users/testuser/.apsolut-theme/statusline.js"` } });
-check('stale .apsolut-theme path -> repaired', wire() === 'repaired');
-check('  repointed at .clawcoat', read().statusLine.command === WANT, read().statusLine?.command);
-
-// 4. stale but same-dir (node moved) -> repaired
+// 3. stale but same-dir (node moved) -> repaired
 seed({ statusLine: { type: 'command', command: '"C:/old/node.exe" "C:/Users/testuser/.clawcoat/statusline.js"' } });
 check('stale node path -> repaired', wire() === 'repaired');
 check('  node path updated', read().statusLine.command === WANT);
 
-// 5. a hand-rolled statusline is never stolen
+// 4. a hand-rolled statusline is never stolen
 const foreign = { type: 'command', command: 'starship prompt' };
 seed({ statusLine: { ...foreign } });
 check('foreign statusLine -> foreign', wire() === 'foreign');
 check('  left untouched', read().statusLine.command === 'starship prompt');
 
-// 6. backslash paths escape correctly through JSON.stringify
+// 5. backslash paths escape correctly through JSON.stringify
 seed({});
 const bsNode = 'C:\\Program Files\\nodejs\\node.exe';
 const out = run('slWireScript.js', bsNode, SCRIPT);
@@ -75,7 +70,7 @@ check('backslash + space path -> wired', out === 'wired');
 check('  round-trips as valid JSON', (() => { try { read(); return true; } catch { return false; } })());
 check('  no raw backslashes in command', !read().statusLine.command.includes('\\'), read().statusLine?.command);
 
-// 7. An unparseable settings.json must be LEFT ALONE. Writing over it would
+// 6. An unparseable settings.json must be LEFT ALONE. Writing over it would
 //    destroy every permission / hook / env var / model pin the user has, because
 //    of one trailing comma. This test previously asserted the opposite and locked
 //    the data-loss in; caught in review.
@@ -93,28 +88,24 @@ check('  created valid JSON', read().statusLine.command === WANT);
 writeFileSync(P, '   ');
 check('empty settings -> wired', wire() === 'wired');
 
-// 8. unhook (used by -StatuslineOff) removes ours
+// 7. unhook (used by -StatuslineOff) removes ours
 seed({ keep: true }); wire();
 run('SlUnhookScript.js');
 check('unhook removes our statusLine', read().statusLine === undefined);
 check('  other keys survive', read().keep === true);
 
-// 9. unhook leaves a foreign bar alone
+// 8. unhook leaves a foreign bar alone
 seed({ statusLine: { ...foreign } });
 run('SlUnhookScript.js');
 check('unhook spares foreign statusLine', read().statusLine?.command === 'starship prompt');
 
-// 10. the same script backs -Uninstall, and reports what it did
+// 9. the same script backs -Uninstall, and reports what it did
 seed({}); wire();
 check('uninstall remover reports unhooked', run('SlUnhookScript.js') === 'unhooked');
 check('  statusLine gone', read().statusLine === undefined);
 seed({ statusLine: { ...foreign } });
 check('unhook silent on foreign', run('SlUnhookScript.js') === '');
 check('  foreign survives uninstall', read().statusLine?.command === 'starship prompt');
-
-// 11. uninstall remover also cleans a legacy pre-rename pointer
-seed({ statusLine: { type: 'command', command: 'node C:/Users/testuser/.apsolut-theme/statusline.js' } });
-check('uninstall remover cleans legacy path', run('SlUnhookScript.js') === 'unhooked');
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
