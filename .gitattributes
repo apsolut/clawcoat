@@ -12,6 +12,11 @@
 #
 * text=auto
 
+# Images are binary. `* text=auto` above is normally smart enough to detect that,
+# but saying it outright means a PNG can never be line-ending-normalised into a
+# corrupt file on someone's checkout.
+*.png           binary
+
 install.ps1     text eol=crlf
 
 *.sh            text eol=lf
