@@ -1453,13 +1453,16 @@ if (!existsSync(_clawFile)) { try { _clawWrite(c => { c.theme = '__CLAW_INIT_THE
       // The statusline (bottom bar), as opposed to `widget` (the header board).
       // Rendered by ~/.clawcoat/statusline.js, which re-reads clawcoat.json every
       // paint — so this takes effect immediately, no restart.
-      const _BAR_PARTS = ['model','effort','ctx','5h','git','cwd','clock','brand','contain','tvirus','pwr','status','sweep'];
+      const _BAR_PARTS = ['model','effort','ctx','5h','git','cwd','clock','pomo','brand','contain','tvirus','pwr','status','sweep'];
       const rest = _a.slice(2).join(' ').trim();
       const shown = cfg.bar ? (Array.isArray(cfg.bar) ? cfg.bar.join(',') : cfg.bar) : '(default) model,effort,ctx,5h,git,clock';
       if (!rest) {
         say(`bar: ${shown}`);
         say(`parts: ${_BAR_PARTS.join(', ')}`);
         say('hive readouts: contain=containment left  tvirus=context used  pwr=5h reserve  status=SECURE/ELEVATED/BREACH');
+        say('pomo: repeating pomodoro countdown — length in minutes via "pomoMins" in clawcoat.json (default 30)');
+        say('      chimes when a block completes; "pomoChime": false silences it, "pomoChimeCmd" swaps the sound');
+        say('rename labels: "barLabels" in clawcoat.json, e.g. {"contain":"CNTX","pwr":""} — empty string hides the label');
       }
       else if (_clawIsOff(rest)) { _clawWrite(c => { delete c.bar; delete c.barSep; }); say('bar -> default'); }
       else {
@@ -2129,14 +2132,14 @@ $StatuslineSource = @'
 // The bar is a list of PARTS, chosen with `claude theme bar <parts>` and stored
 // as cfg.bar. Two families share one vocabulary:
 //
-//   plain   model effort ctx 5h git cwd clock
+//   plain   model effort ctx 5h git cwd clock pomo
 //   costume brand contain tvirus pwr status sweep
 //
 // The costume parts are not decoration — each one is a real session metric with
 // a different name and a threshold colour, so the bar genuinely degrades over a
 // long session (SECURE -> ELEVATED -> BREACH). That is the whole trick.
-const { execFileSync } = require("child_process");
-const { readFileSync } = require("fs");
+const { execFileSync, spawn } = require("child_process");
+const { readFileSync, writeFileSync } = require("fs");
 const { join } = require("path");
 const os = require("os");
 
@@ -2209,6 +2212,13 @@ function git() {
 
 const hhmm = () => { const n = new Date(); return String(n.getHours()).padStart(2, "0") + ":" + String(n.getMinutes()).padStart(2, "0"); };
 
+// Per-part label override: cfg.barLabels = { contain: "CNTX", pwr: "" }.
+// An empty string hides the label entirely (value only); unset keeps the default.
+const lbl = (name, def) => {
+  const v = cfg.barLabels && typeof cfg.barLabels[name] === "string" ? cfg.barLabels[name] : def;
+  return v ? DIM + v + R + " " : "";
+};
+
 // ---- parts. Each returns a rendered string, or null to be skipped. ----
 const PARTS = {
   // plain
@@ -2226,18 +2236,60 @@ const PARTS = {
     return m ? acc + m + R : null;
   },
   effort: () => (d.effort && d.effort.level ? DIM + d.effort.level + R : null),
-  ctx:    () => (ctx == null ? null : `${DIM}ctx ${R}${sevUp(ctx)}${ctx}%${R}`),
-  "5h":   () => (five == null ? null : `${DIM}5h ${R}${five >= 85 ? bad : five >= 60 ? warn : DIM}${five}%${R}`),
+  ctx:    () => (ctx == null ? null : `${lbl("ctx", "ctx")}${sevUp(ctx)}${ctx}%${R}`),
+  "5h":   () => (five == null ? null : `${lbl("5h", "5h")}${five >= 85 ? bad : five >= 60 ? warn : DIM}${five}%${R}`),
   git:    () => { const g = git(); return g ? acc + g + R : null; },
   cwd:    () => { try { return DIM + require("path").basename((d.workspace && d.workspace.current_dir) || process.cwd()) + R; } catch (e) { return null; } },
   clock:  () => DIM + hhmm() + R,
+  // POMO — repeating pomodoro countdown (cfg.pomoMins, default 30). Anchored to
+  // the dose sitting-start so walking away long enough to reset the dose clock
+  // restarts the pomodoro too; with no sitting on record it anchors to midnight,
+  // landing blocks on predictable wall-clock boundaries. Read-only on .dose —
+  // the wrapper owns writing it.
+  pomo:   () => {
+    const now = Date.now();
+    const period = Math.max(1, Math.round(+cfg.pomoMins || 30)) * 60000;
+    const idleMs = Math.max(1, +cfg.doseIdleReset || 10) * 60000;
+    let anchor = null;
+    try {
+      const st = JSON.parse(readFileSync(join(os.homedir(), ".clawcoat", ".dose"), "utf8"));
+      if (st && st.start && st.last && now >= st.start && now - st.last <= idleMs) anchor = st.start;
+    } catch (e) {}
+    if (anchor == null) { const m = new Date(now); m.setHours(0, 0, 0, 0); anchor = m.getTime(); }
+    const left = period - ((now - anchor) % period);
+    const mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000);
+    const col = left <= 60000 ? bad : left <= 5 * 60000 ? warn : ok;
+    // Chime once per completed block ("pomoChime": false disables). State in
+    // .pomo — same pattern as .dose — so repaints and concurrent sessions fire a
+    // single chime per rollover, machine-wide. Only a boundary crossed in the
+    // last 2 minutes rings: a new sitting re-anchors silently, and nothing
+    // replays stale rollovers. The spawn is detached so a paint never blocks.
+    if (cfg.pomoChime !== false) {
+      try {
+        const pf = join(os.homedir(), ".clawcoat", ".pomo");
+        const block = Math.floor((now - anchor) / period);
+        let st = null;
+        try { st = JSON.parse(readFileSync(pf, "utf8")); } catch (e) {}
+        if (!st || st.anchor !== anchor || st.block !== block) {
+          writeFileSync(pf, JSON.stringify({ anchor, block }));
+          if (st && st.anchor === anchor && st.block < block && (now - anchor) % period < 120000) {
+            const cmd = typeof cfg.pomoChimeCmd === "string" && cfg.pomoChimeCmd.trim()
+              ? cfg.pomoChimeCmd
+              : 'powershell -NoProfile -Command "[console]::beep(880,150);[console]::beep(1175,200)"';
+            spawn(cmd, { shell: true, detached: true, stdio: "ignore", windowsHide: true }).unref();
+          }
+        }
+      } catch (e) {}
+    }
+    return `${lbl("pomo", "POMO")}${col}${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}${R}`;
+  },
 
   // costume
   brand:  () => `${B}${acc}█ ${String(cfg.org || "CLAWCOAT").toUpperCase()}${R}`,
   contain: () => (integrity == null ? null
-    : `${DIM}CONTAIN${R} ${meter(integrity)} ${bone}${String(integrity).padStart(3)}%${R}`),
-  tvirus: () => (ctx == null ? null : `${DIM}T-VIRUS${R} ${sevUp(ctx)}${ctx}%${R}`),
-  pwr:    () => (pwr == null ? null : `${DIM}PWR${R} ${sevDown(pwr)}${pwr}%${R}`),
+    : `${lbl("contain", "CONTAIN")}${meter(integrity)} ${bone}${String(integrity).padStart(3)}%${R}`),
+  tvirus: () => (ctx == null ? null : `${lbl("tvirus", "T-VIRUS")}${sevUp(ctx)}${ctx}%${R}`),
+  pwr:    () => (pwr == null ? null : `${lbl("pwr", "PWR")}${sevDown(pwr)}${pwr}%${R}`),
   status: () => {
     if (integrity == null) return null;
     const [text, col] = integrity >= 66 ? ["SECURE", ok] : integrity >= 33 ? ["ELEVATED", warn] : ["BREACH", bad];
