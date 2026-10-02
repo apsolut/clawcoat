@@ -14,6 +14,39 @@ JSON file or a `claude theme` command, without reinstalling.**
 UMBRELLA HIVE·B7, CONTAIN 87%, T-VIRUS 13%, PWR 99%, SECURE — plus a "Containing…"
 spinner. Real output; every readout is a live session metric.](docs/hero.png)
 
+## The upstream mods API — where this is headed
+
+Claude Code 2.1.287 introduced **[mods](https://code.claude.com/docs/en/plugins/mods/overview)**:
+plugins whose JavaScript hooks run *inside* Claude Code and can officially restyle
+parts of the UI — the spinner, tool rows, dialogs — and draw their own panes. In
+other words: an official, update-proof, marketplace-distributable API for about
+half of what ClawCoat does by patching the binary.
+
+What that means here, honestly:
+
+| ClawCoat feature | Mods can do it? |
+|---|---|
+| Spinner words + glyph | **Yes** — a `ui.render` hook on the `Spinner` site |
+| Header widget | **Yes, better** — the `AbovePrompt` band is interactive |
+| Voice / persona | **Yes** — `prompt.section` hooks |
+| In-session `/theme` command | **Yes** — instant, no Claude turn |
+| **Global brand colors, animation, reactive logo** | **No** — there is no theme-token event; getter injection stays |
+| **Welcome banner logo art** | **No** — no welcome render site exists |
+| Bottom bar | Already the official `statusLine` mechanism — unchanged |
+
+So the plan is a hybrid, not a rewrite: migrate what mods cover into a
+`clawcoat-mod` plugin, shrink the binary patcher to the palette + logo it alone
+can reach, and retire it the day upstream grows a theme event. Reading list:
+
+- [Mods overview](https://code.claude.com/docs/en/plugins/mods/overview) — what a mod is, trust model, built-ins
+- [Mods reference](https://code.claude.com/docs/en/plugins/mods/reference) — every event, render site, element, and limit
+- [`anthropics/claude-code/mods`](https://github.com/anthropics/claude-code/tree/main/mods) — source of the four built-in mods, plus `types/claude-code.d.ts`, the full typed API
+- [Getting started with Claude Code mods](https://claude.dev/blog/getting-started-with-claude-code-mods/) — tutorial with worked examples
+
+Mods require Claude Code ≥ 2.1.287 — the same version the extractor can't unpack
+yet (see the compatibility note under *Install*), which makes that migration the
+gateway to all of this.
+
 ## What it touches — and what it deliberately doesn't
 
 It patches the Claude Code binary on your machine. Install does exactly three things:
@@ -388,39 +421,6 @@ drifts, `sh tools/prettify.sh` unminifies the bundle so you can find the new sha
 Patterns anchor on **distinctive content**, never on minified identifiers: those are
 regenerated every release. `hmc=!q.IS_DEMO` silently stopped matching in 2.1.240 and
 took the whole header widget with it; the pattern now captures those names instead.
-
-## The upstream mods API — where this is headed
-
-Claude Code 2.1.287 introduced **[mods](https://code.claude.com/docs/en/plugins/mods/overview)**:
-plugins whose JavaScript hooks run *inside* Claude Code and can officially restyle
-parts of the UI — the spinner, tool rows, dialogs — and draw their own panes. In
-other words: an official, update-proof, marketplace-distributable API for about
-half of what ClawCoat does by patching the binary.
-
-What that means here, honestly:
-
-| ClawCoat feature | Mods can do it? |
-|---|---|
-| Spinner words + glyph | **Yes** — a `ui.render` hook on the `Spinner` site |
-| Header widget | **Yes, better** — the `AbovePrompt` band is interactive |
-| Voice / persona | **Yes** — `prompt.section` hooks |
-| In-session `/theme` command | **Yes** — instant, no Claude turn |
-| **Global brand colors, animation, reactive logo** | **No** — there is no theme-token event; getter injection stays |
-| **Welcome banner logo art** | **No** — no welcome render site exists |
-| Bottom bar | Already the official `statusLine` mechanism — unchanged |
-
-So the plan is a hybrid, not a rewrite: migrate what mods cover into a
-`clawcoat-mod` plugin, shrink the binary patcher to the palette + logo it alone
-can reach, and retire it the day upstream grows a theme event. Reading list:
-
-- [Mods overview](https://code.claude.com/docs/en/plugins/mods/overview) — what a mod is, trust model, built-ins
-- [Mods reference](https://code.claude.com/docs/en/plugins/mods/reference) — every event, render site, element, and limit
-- [`anthropics/claude-code/mods`](https://github.com/anthropics/claude-code/tree/main/mods) — source of the four built-in mods, plus `types/claude-code.d.ts`, the full typed API
-- [Getting started with Claude Code mods](https://claude.dev/blog/getting-started-with-claude-code-mods/) — tutorial with worked examples
-
-Mods require Claude Code ≥ 2.1.287 — the same version the extractor can't unpack
-yet (see the compatibility note under *Install*), which makes that migration the
-gateway to all of this.
 
 ## Attribution and license
 
