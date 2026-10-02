@@ -54,13 +54,26 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Theme yellow   # st
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall      # restore vanilla claude
 ```
 
+> **⚠ Compatibility — Claude Code ≥ 2.1.287.** The 2.1.287 build (the one that
+> introduces [mods](#the-upstream-mods-api--where-this-is-headed)) restructured the
+> bundle from one monolithic IIFE into a chunked ES-module tree. The extractor
+> doesn't speak that shape yet, so against 2.1.287+ the installer **aborts cleanly
+> before touching anything** — an existing install keeps working, it just can't
+> upgrade past that version until the extractor migration lands. Everything that
+> ships as a plain file (the statusline, including `pomo` and `barLabels`) is
+> unaffected.
+
 ## Live theming — the wow part
+
+> **New here?** [docs/THEMING.md](docs/THEMING.md) is the map: a labeled picture of
+> the Claude Code screen — banner, header board, spinner, prompt, bottom bar — with
+> each part's command and `clawcoat.json` key next to it.
 
 Once installed, no reinstall is ever needed to recolor:
 
 ```
 claude theme                     # show current theme + animation
-claude theme list                # clawcoat · yellow · violet · gruvbox · dracula
+claude theme list                # clawcoat · yellow · violet · gruvbox · dracula · biohazard · neon
 claude theme dracula             # switch palette (takes effect on next render)
 claude theme animate rainbow     # animate the logo (8 modes, see below)
 claude theme animate pulse 2     # optional speed multiplier
@@ -222,7 +235,22 @@ colors? They're `clawd_body`, `claude`, and `briefLabelClaude` — give each its
 own value.
 
 Built-in palettes: `clawcoat` (cornflower #6495ed), `yellow` (#facc15),
-`violet` (#8b5cf6), `gruvbox`, `dracula`.
+`violet` (#8b5cf6), `gruvbox`, `dracula`, `biohazard`, `neon`.
+
+### Presets — a whole outfit in one command
+
+A preset sets several surfaces at once — palette, logo, spinner words, org line,
+prompt glyph, widget, bar, voice:
+
+```
+claude theme preset hive            # the containment-console statusline (below)
+claude theme preset umbrella-corp   # full Umbrella dress: biohazard + skull + ☣ + dose
+claude theme preset cyberpunk       # neon + cyber spinner    (also: vaporwave, ghibli, party)
+claude theme preset save mine       # snapshot your current look as `mine`
+claude theme preset mine --keep-color   # apply everything except the palette
+```
+
+Full inventory per preset: [docs/THEMING.md](docs/THEMING.md).
 
 ## Not yet included (needs a one-time binary read)
 
@@ -259,6 +287,11 @@ claude theme bar default               # back to the layout above
 | `git` | branch, with a red `✳` when the tree is dirty |
 | `cwd` | current directory name |
 | `clock` | local `HH:MM` |
+| `pomo` | repeating pomodoro countdown, `POMO 22:41` — 30-minute blocks by default (`"pomoMins"` in `clawcoat.json`), anchored to the dose meter's sitting-start so walking away long enough to reset the dose clock restarts the pomodoro too; amber in the last 5 minutes, red in the last one. **Chimes** (two rising beeps) when a block completes — once per rollover machine-wide, never for stale boundaries; `"pomoChime": false` silences it, `"pomoChimeCmd"` swaps in any command (your own WAV, a different beep) |
+
+Any part's label can be renamed (or hidden) without touching the code —
+`"barLabels"` in `clawcoat.json`: `{"contain": "CNTX", "pwr": ""}` renames
+CONTAIN and leaves PWR's value standing alone.
 
 The accent colour is read from your live palette, so the bar re-themes with
 everything else — including custom palettes you add yourself.
@@ -307,7 +340,8 @@ it alone, and prints the command to wire ours up by hand instead.
 - Installs into the dedicated `~/.clawcoat` dir (separate from any clawgod install); installing
   it repoints the `claude` launcher (reversible with `-Uninstall`).
 - Windows-only (`install.sh` for macOS/Linux is not included here).
-- `claude update` is **not** hijacked; re-run the script after Claude updates.
+- `claude update` is **not** hijacked; re-run the script after Claude updates
+  (currently capped below 2.1.287 — see the compatibility note under *Install*).
 
 ## Repo layout
 
@@ -323,6 +357,7 @@ carries the wrapper, the patcher, and the statusline as embedded here-strings.
 | `tools/extract-herestring.mjs` | pulls an embedded script out of `install.ps1` so it can be tested as-written |
 | `tools/test-statusline-*.mjs` | regression suites for the statusline + its settings wiring |
 | `CONTRIBUTING.md` | the here-string rule, the checks to run, and the rules that exist because something broke |
+| `docs/THEMING.md` | the user-facing map: every themeable surface, its command, and its JSON key |
 | `docs/hero.png` | the image at the top of this README — real session output, composited |
 
 `tools/cli.pretty.js` and `tools/system-prompts-*/` are **not tracked**: both are
@@ -353,6 +388,39 @@ drifts, `sh tools/prettify.sh` unminifies the bundle so you can find the new sha
 Patterns anchor on **distinctive content**, never on minified identifiers: those are
 regenerated every release. `hmc=!q.IS_DEMO` silently stopped matching in 2.1.240 and
 took the whole header widget with it; the pattern now captures those names instead.
+
+## The upstream mods API — where this is headed
+
+Claude Code 2.1.287 introduced **[mods](https://code.claude.com/docs/en/plugins/mods/overview)**:
+plugins whose JavaScript hooks run *inside* Claude Code and can officially restyle
+parts of the UI — the spinner, tool rows, dialogs — and draw their own panes. In
+other words: an official, update-proof, marketplace-distributable API for about
+half of what ClawCoat does by patching the binary.
+
+What that means here, honestly:
+
+| ClawCoat feature | Mods can do it? |
+|---|---|
+| Spinner words + glyph | **Yes** — a `ui.render` hook on the `Spinner` site |
+| Header widget | **Yes, better** — the `AbovePrompt` band is interactive |
+| Voice / persona | **Yes** — `prompt.section` hooks |
+| In-session `/theme` command | **Yes** — instant, no Claude turn |
+| **Global brand colors, animation, reactive logo** | **No** — there is no theme-token event; getter injection stays |
+| **Welcome banner logo art** | **No** — no welcome render site exists |
+| Bottom bar | Already the official `statusLine` mechanism — unchanged |
+
+So the plan is a hybrid, not a rewrite: migrate what mods cover into a
+`clawcoat-mod` plugin, shrink the binary patcher to the palette + logo it alone
+can reach, and retire it the day upstream grows a theme event. Reading list:
+
+- [Mods overview](https://code.claude.com/docs/en/plugins/mods/overview) — what a mod is, trust model, built-ins
+- [Mods reference](https://code.claude.com/docs/en/plugins/mods/reference) — every event, render site, element, and limit
+- [`anthropics/claude-code/mods`](https://github.com/anthropics/claude-code/tree/main/mods) — source of the four built-in mods, plus `types/claude-code.d.ts`, the full typed API
+- [Getting started with Claude Code mods](https://claude.dev/blog/getting-started-with-claude-code-mods/) — tutorial with worked examples
+
+Mods require Claude Code ≥ 2.1.287 — the same version the extractor can't unpack
+yet (see the compatibility note under *Install*), which makes that migration the
+gateway to all of this.
 
 ## Attribution and license
 
